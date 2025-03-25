@@ -10,15 +10,21 @@ import openai
 
 class YouTubeManager:
     def __init__(self, api_key: str):
-        """Initialize the YouTube manager with API credentials."""
-        if not api_key:
-            raise ValueError("YouTube API key is required")
+        """Initialize the YouTube manager.
+        
+        Args:
+            api_key: YouTube API key
+        """
         self.api_key = api_key
-        try:
-            self.youtube = build('youtube', 'v3', developerKey=api_key)
-        except Exception as e:
-            raise ValueError(f"Failed to initialize YouTube API client: {str(e)}")
+        self.youtube = build('youtube', 'v3', developerKey=api_key)
         self.logger = logging.getLogger(__name__)
+        
+        # Configure logger to handle Unicode
+        for handler in self.logger.handlers:
+            if isinstance(handler, logging.StreamHandler):
+                handler.setStream(open(handler.stream.fileno(), mode=handler.stream.mode, encoding='utf-8'))
+            elif isinstance(handler, logging.FileHandler):
+                handler.setStream(open(handler.baseFilename, mode=handler.mode, encoding='utf-8'))
         
     def extract_video_id(self, url: str) -> Optional[str]:
         """Extract video ID from various YouTube URL formats.
@@ -85,32 +91,30 @@ class YouTubeManager:
             # Get available transcripts
             try:
                 transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-                self.logger.info(f"Available transcripts: {transcript_list}")
             except Exception as e:
                 self.logger.error(f"Failed to list transcripts: {str(e)}")
                 return None
             
-            # Try to get English transcript, fall back to auto-translated if needed
+            # Try to get English transcript in order of preference
             transcript = None
-            errors = []
+            preferred_languages = ['en', 'en-US', 'en-GB']
             
-            # Try manual transcripts first
-            for lang in ['en', 'en-US', 'en-GB']:
+            # Try manual English transcripts first
+            for lang in preferred_languages:
                 try:
                     transcript = transcript_list.find_transcript([lang])
                     self.logger.info(f"Found manual transcript in {lang}")
                     break
-                except Exception as e:
-                    errors.append(f"No manual {lang} transcript: {str(e)}")
+                except Exception:
+                    continue
             
-            # If no manual transcript, try auto-generated
+            # If no manual English transcript, try auto-generated English
             if not transcript:
                 try:
-                    transcript = transcript_list.find_generated_transcript()
-                    self.logger.info("Found auto-generated transcript")
+                    transcript = transcript_list.find_generated_transcript(['en'])
+                    self.logger.info("Found auto-generated English transcript")
                 except Exception as e:
-                    errors.append(f"No auto-generated transcript: {str(e)}")
-                    self.logger.error(f"Failed to get any transcript. Errors: {'; '.join(errors)}")
+                    self.logger.error(f"Failed to get English transcript: {str(e)}")
                     return None
 
             # Get the transcript data

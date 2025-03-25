@@ -44,24 +44,35 @@ class Chat(commands.Cog):
             conversation = self.conversation_manager.get_conversation(interaction.guild_id)
             
             # Add user's message to history
-            self.conversation_manager.add_message(
-                guild_id=interaction.guild_id,
+            success = self.conversation_manager.add_message(
+                user_id=str(interaction.user.id),
                 role="user",
-                content=question
+                content=question,
+                channel_id=str(interaction.channel_id)
             )
+            
+            if not success:
+                raise Exception("Failed to add user message to conversation")
+
+            # Show user's question
+            await interaction.followup.send(f"**{interaction.user.name}:** {question}")
 
             # Generate AI response
             response = await self.conversation_manager.generate_response(
-                guild_id=interaction.guild_id,
                 user_id=str(interaction.user.id),
-                message=question
+                message=question,
+                channel_id=str(interaction.channel_id)
             )
 
+            if not response:
+                raise Exception("Failed to generate response")
+
             # Add AI response to history
-            self.conversation_manager.add_message(
-                guild_id=interaction.guild_id,
+            success = self.conversation_manager.add_message(
+                user_id=str(interaction.user.id),
                 role="assistant",
-                content=response
+                content=response,
+                channel_id=str(interaction.channel_id)
             )
 
             # Split response if too long
@@ -98,6 +109,82 @@ class Chat(commands.Cog):
                     error=e,
                     error_id=error_id,
                     context={"command": "ask"}
+                )
+            )
+
+    @app_commands.command(
+        name="wiki",
+        description="Get Wikipedia-based answers to your questions"
+    )
+    @app_commands.describe(
+        query="Your question or topic to search on Wikipedia"
+    )
+    async def wiki(
+        self,
+        interaction: discord.Interaction,
+        query: str
+    ):
+        """
+        Get Wikipedia-based answers to your questions.
+        
+        Parameters:
+        -----------
+        query: str
+            The question or topic to search on Wikipedia
+        """
+        await interaction.response.defer()
+
+        try:
+            # Show user's query
+            await interaction.followup.send(f"**{interaction.user.name}:** {query}")
+
+            # Get Wikipedia summary
+            summary, url = self.bot.article_summarizer.get_wikipedia_summary(query)
+            
+            if not summary:
+                await interaction.followup.send(
+                    embed=self.ui_components.create_error_embed(
+                        error=url,  # url contains error message in this case
+                        context={"command": "wiki"}
+                    )
+                )
+                return
+
+            # Create embed for response
+            embed = discord.Embed(
+                title="📚 Wikipedia Summary",
+                description=summary,
+                url=url,
+                color=discord.Color.blue()
+            )
+            embed.set_footer(text=f"Source: Wikipedia")
+
+            # Send response
+            await interaction.followup.send(embed=embed)
+
+            # Track interaction with analytics
+            interaction_data = {
+                "command": "wiki",
+                "content_length": len(query),
+                "response_length": len(summary),
+                "guild_id": str(interaction.guild_id)
+            }
+            self.bot.user_analytics.track_interaction(str(interaction.user.id), interaction_data)
+
+        except Exception as e:
+            error_id = self.error_handler.log_error(
+                error=e,
+                context={
+                    "command": "wiki",
+                    "user_id": str(interaction.user.id),
+                    "guild_id": str(interaction.guild_id)
+                }
+            )
+            await interaction.followup.send(
+                embed=self.ui_components.create_error_embed(
+                    error=e,
+                    error_id=error_id,
+                    context={"command": "wiki"}
                 )
             )
 

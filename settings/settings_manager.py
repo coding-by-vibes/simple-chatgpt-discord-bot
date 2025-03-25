@@ -8,12 +8,14 @@ class SettingsManager:
         self.settings_dir = Path(settings_dir) if settings_dir else Path("settings")
         self.servers_dir = self.settings_dir / "servers"
         self.personas_dir = self.settings_dir / "personas"
+        self.users_dir = self.settings_dir / "users"
         self.default_settings_path = self.settings_dir / "default_settings.json"
         
         # Create necessary directories
         self.settings_dir.mkdir(exist_ok=True)
         self.servers_dir.mkdir(exist_ok=True)
         self.personas_dir.mkdir(exist_ok=True)
+        self.users_dir.mkdir(exist_ok=True)
         
         # Load default settings
         self.default_settings = self._load_json(self.default_settings_path)
@@ -24,13 +26,16 @@ class SettingsManager:
                         "name": "Default Assistant",
                         "role": "You are a helpful and friendly AI assistant.",
                         "traits": ["helpful", "friendly", "professional"],
-                        "style": "neutral"
+                        "style": "neutral",
+                        "conversation_settings": {
+                            "max_history": 10,
+                            "timeout_minutes": 30,
+                            "include_context": True,
+                            "model": "gpt-4o-mini"
+                        }
                     }
                 },
-                "current_persona": "default",
-                "model": "gpt-4o-mini",
-                "max_tokens": 2000,
-                "temperature": 0.7
+                "current_persona": "default"
             }
             self._save_json(self.default_settings_path, self.default_settings)
 
@@ -164,4 +169,89 @@ class SettingsManager:
             return custom_personas
         except Exception as e:
             print(f"Error loading custom personas: {e}")
-            return custom_personas 
+            return custom_personas
+
+    def get_user_settings(self, user_id: str) -> Dict:
+        """Get settings for a specific user, creating default if not exists.
+        
+        Args:
+            user_id: The Discord user ID
+            
+        Returns:
+            Dict: The user's settings
+        """
+        user_file = self.users_dir / f"{user_id}.json"
+        settings = self._load_json(user_file)
+        
+        if not settings:
+            settings = self.default_settings.copy()
+            self._save_json(user_file, settings)
+        
+        return settings
+
+    def update_user_settings(self, user_id: str, new_settings: Dict) -> Dict:
+        """Update settings for a specific user.
+        
+        Args:
+            user_id: The Discord user ID
+            new_settings: The new settings to apply
+            
+        Returns:
+            Dict: The updated settings
+        """
+        user_file = self.users_dir / f"{user_id}.json"
+        current_settings = self.get_user_settings(user_id)
+        
+        # Deep merge the settings
+        merged_settings = self._deep_merge(current_settings, new_settings)
+        
+        if self._save_json(user_file, merged_settings):
+            return merged_settings
+        return None
+
+    def set_user_persona(self, user_id: str, persona_id: str) -> bool:
+        """Set the current persona for a user.
+        
+        Args:
+            user_id: The Discord user ID
+            persona_id: The ID of the persona to set
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        settings = self.get_user_settings(user_id)
+        if persona_id in settings.get("personas", {}):
+            settings["current_persona"] = persona_id
+            return self._save_json(self.users_dir / f"{user_id}.json", settings)
+        return False
+
+    def add_user_persona(self, user_id: str, persona_id: str, persona_data: Dict) -> bool:
+        """Add a new persona to a user's settings.
+        
+        Args:
+            user_id: The Discord user ID
+            persona_id: The ID of the new persona
+            persona_data: The persona data
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        settings = self.get_user_settings(user_id)
+        if "personas" not in settings:
+            settings["personas"] = {}
+        
+        settings["personas"][persona_id] = persona_data
+        return self._save_json(self.users_dir / f"{user_id}.json", settings)
+
+    def get_available_user_personas(self, user_id: str) -> list:
+        """Get a list of available personas for a user.
+        
+        Args:
+            user_id: The Discord user ID
+            
+        Returns:
+            list: List of (persona_id, persona_name) tuples
+        """
+        settings = self.get_user_settings(user_id)
+        personas = settings.get("personas", {})
+        return [(key, persona.get("name", key)) for key, persona in personas.items()] 

@@ -3,6 +3,7 @@ from discord.ext import commands
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+import logging
 from settings.settings_manager import SettingsManager
 from settings.conversation_manager import ConversationManager
 from settings.conversation_analyzer import ConversationAnalyzer
@@ -25,20 +26,28 @@ from utils.rbac_manager import RBACManager
 from datetime import datetime
 from discord.ext import commands
 from discord import app_commands
+import sys
 
-# Load environment variables
-load_dotenv()
-
-# Verify environment variables are loaded
-required_env_vars = {
-    'DISCORD_BOT_TOKEN': "Discord bot token not found in environment variables.",
-    'OPENAI_API_KEY': "OpenAI API key not found in environment variables.",
-    'YOUTUBE_API_KEY': "YouTube API key not found in environment variables."
-}
-
-for var, message in required_env_vars.items():
-    if not os.getenv(var):
-        raise ValueError(f"{message} Please check your .env file.")
+def setup_logging():
+    """Set up logging configuration."""
+    # Create logs directory if it doesn't exist
+    os.makedirs('logs', exist_ok=True)
+    
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler('logs/bot.log', encoding='utf-8'),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    
+    # Create logger
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+    
+    return logger
 
 class ChatGPTBot(commands.Bot):
     def __init__(self):
@@ -54,6 +63,9 @@ class ChatGPTBot(commands.Bot):
             help_command=None,  # Disable default help command
             case_insensitive=True  # Make commands case-insensitive
         )
+        
+        # Initialize logger
+        self.logger = logging.getLogger(__name__)
         
         # Initialize settings directory
         self.settings_dir = os.path.join(os.path.dirname(__file__), 'settings')
@@ -101,9 +113,11 @@ class ChatGPTBot(commands.Bot):
         except Exception as e:
             error_id = self.error_handler.log_error(
                 error=e,
-                command="init_managers",
-                severity="HIGH",
-                context={"phase": "initialization"}
+                context={
+                    "command": "init_managers",
+                    "severity": "HIGH",
+                    "phase": "initialization"
+                }
             )
             raise RuntimeError(f"Failed to initialize managers: {e} (Error ID: {error_id})")
         
@@ -126,45 +140,60 @@ class ChatGPTBot(commands.Bot):
                 except Exception as e:
                     error_id = self.error_handler.log_error(
                         error=e,
-                        command="setup_hook",
-                        severity="MEDIUM",
-                        context={"cog": cog}
+                        context={
+                            "command": "setup_hook",
+                            "severity": "MEDIUM",
+                            "cog": cog
+                        }
                     )
                     print(f"Failed to load cog {cog}: {e} (Error ID: {error_id})")
                     
         except Exception as e:
             error_id = self.error_handler.log_error(
                 error=e,
-                command="setup_hook",
-                severity="HIGH",
-                context={"phase": "cog_loading"}
+                context={
+                    "command": "setup_hook",
+                    "severity": "HIGH",
+                    "phase": "cog_loading"
+                }
             )
             raise RuntimeError(f"Failed to set up bot: {e} (Error ID: {error_id})")
         
     async def on_ready(self):
-        """Called when bot is ready."""
-        print(f'Bot is ready! Logged in as {self.user.name}')
-        print(f'Connected to {len(self.guilds)} guilds')
-        print(f'Bot ID: {self.user.id}')
-        print(f'Discord.py version: {discord.__version__}')
-        
+        """Called when the bot is ready and connected to Discord."""
         try:
-            synced = await self.tree.sync()
-            print(f"Synced {len(synced)} command(s)")
+            self.logger.info(f"Logged in as {self.user.name} (ID: {self.user.id})")
+            self.logger.info("------")
             
-            # Initialize analytics for all connected guilds
+            # Start conversation cleanup task
+            await self.conversation_manager.start_cleanup_task()
+            
+            # Load all guild settings
             for guild in self.guilds:
-                self.analytics_manager.initialize_guild(str(guild.id))
-                
+                try:
+                    self.settings_manager.get_server_settings(str(guild.id))
+                    self.logger.info(f"Loaded settings for guild: {guild.name} (ID: {guild.id})")
+                except Exception as e:
+                    self.error_handler.log_error(
+                        error=e,
+                        context={
+                            "guild_id": str(guild.id),
+                            "guild_name": guild.name,
+                            "event": "on_ready",
+                            "phase": "guild_settings_load"
+                        }
+                    )
+                    self.logger.error(f"Error loading settings for guild {guild.name}: {e}")
+                    
         except Exception as e:
-            error_id = self.error_handler.log_error(
+            self.error_handler.log_error(
                 error=e,
                 context={
-                    "action": "syncing_commands",
-                    "phase": "on_ready"
+                    "event": "on_ready",
+                    "phase": "initialization"
                 }
             )
-            print(f"Failed to sync commands: {e} (Error ID: {error_id})")
+            self.logger.error(f"Error in on_ready: {e}")
 
     async def on_message(self, message: discord.Message):
         """Handle message events."""
@@ -180,101 +209,105 @@ class ChatGPTBot(commands.Bot):
             if message.reference and message.reference.resolved:
                 referenced_message = message.reference.resolved
                 if referenced_message.author == self.user:
-                    # Check rate limits before processing
-                    if not self.rate_limiter.check_rate_limit(str(message.author.id), "message_reply"):
+                    try:
+                        # Check rate limits before processing
+                        if not self.rate_limiter.check_rate_limit(str(message.author.id), "message_reply"):
+                            await message.channel.send(
+                                embed=self.ui_components.create_error_embed(
+                                    error="Rate limit exceeded. Please wait before sending more messages.",
+                                    context={"command": "message_reply"}
+                                )
+                            )
+                            return
+
+                        # Defer response with typing indicator
+                        async with message.channel.typing():
+                            # Get channel ID, handle DM case
+                            channel_id = str(message.channel.id) if message.guild else None
+                            
+                            # Add user's message to conversation
+                            success = self.conversation_manager.add_message(
+                                user_id=str(message.author.id),
+                                role="user",
+                                content=message.content,
+                                channel_id=channel_id
+                            )
+                            
+                            if not success:
+                                raise Exception("Failed to add user message to conversation")
+
+                            # Generate response
+                            response = await self.conversation_manager.generate_response(
+                                user_id=str(message.author.id),
+                                message=message.content,
+                                channel_id=channel_id
+                            )
+
+                            if not response:
+                                raise Exception("Failed to generate response")
+
+                            # Add bot's response to conversation
+                            success = self.conversation_manager.add_message(
+                                user_id=str(message.author.id),
+                                role="assistant",
+                                content=response,
+                                channel_id=channel_id
+                            )
+                            
+                            if not success:
+                                raise Exception("Failed to add bot response to conversation")
+
+                            # Send response
+                            # Split response if too long
+                            if len(response) > 2000:
+                                chunks = [response[i:i + 1990] for i in range(0, len(response), 1990)]
+                                for chunk in chunks:
+                                    await message.reply(chunk)
+                            else:
+                                await message.reply(response)
+
+                            # Track interaction
+                            interaction_data = {
+                                "type": "reply",
+                                "content_length": len(message.content),
+                                "response_length": len(response),
+                                "guild_id": str(message.guild.id) if message.guild else None,
+                                "channel_id": str(message.channel.id) if message.guild else None,
+                                "timestamp": datetime.now().isoformat()
+                            }
+                            self.user_analytics.track_interaction(str(message.author.id), interaction_data)
+
+                    except Exception as e:
+                        # Log the error with context
+                        self.error_handler.log_error(
+                            error=str(e),
+                            context={
+                                'user_id': str(message.author.id),
+                                'guild_id': str(message.guild.id) if message.guild else None,
+                                'channel_id': str(message.channel.id) if message.guild else None,
+                                'message_content': message.content
+                            }
+                        )
+                        
+                        # Send error message to user
                         await message.channel.send(
                             embed=self.ui_components.create_error_embed(
-                                error="Rate limit exceeded. Please wait before sending more messages.",
+                                error="An error occurred while processing your message. Please try again later.",
                                 context={"command": "message_reply"}
                             )
                         )
-                        return
 
-                    # Defer response with typing indicator
-                    async with message.channel.typing():
-                        # Add user's message to conversation
-                        success = self.conversation_manager.add_message(
-                            guild_id=message.guild.id,
-                            role="user",
-                            content=message.content
-                        )
-                        
-                        if not success:
-                            raise Exception("Failed to add user message to conversation")
-
-                        # Generate response
-                        response = await self.conversation_manager.generate_response(
-                            guild_id=message.guild.id,
-                            user_id=str(message.author.id),
-                            message=message.content
-                        )
-
-                        if not response:
-                            raise Exception("Failed to generate response")
-
-                        # Add bot's response to conversation
-                        success = self.conversation_manager.add_message(
-                            guild_id=message.guild.id,
-                            role="assistant",
-                            content=response
-                        )
-                        
-                        if not success:
-                            raise Exception("Failed to add bot response to conversation")
-
-                        # Split response if too long
-                        if len(response) > 2000:
-                            chunks = [response[i:i + 1990] for i in range(0, len(response), 1990)]
-                            for chunk in chunks:
-                                await message.channel.send(chunk)
-                        else:
-                            await message.channel.send(response)
-
-                        # Track interaction
-                        interaction_data = {
-                            "type": "reply",
-                            "content_length": len(message.content),
-                            "response_length": len(response),
-                            "guild_id": str(message.guild.id),
-                            "timestamp": datetime.now().isoformat()
-                        }
-                        self.user_analytics.track_interaction(str(message.author.id), interaction_data)
-
-        except discord.Forbidden as e:
-            error_id = self.error_handler.log_error(
-                error=e,
-                command="message_reply",
-                severity="HIGH",
-                context={
-                    "user_id": str(message.author.id),
-                    "guild_id": str(message.guild.id),
-                    "error_type": "permission_error"
-                }
-            )
-            # Don't send error message if we don't have permission
-            print(f"Permission error in message_reply: {e} (Error ID: {error_id})")
-            
         except Exception as e:
-            error_id = self.error_handler.log_error(
-                error=e,
-                command="message_reply",
-                severity="MEDIUM",
+            # Log any unexpected errors
+            self.error_handler.log_error(
+                error=str(e),
                 context={
-                    "user_id": str(message.author.id),
-                    "guild_id": str(message.guild.id),
-                    "error_type": "general_error"
+                    'user_id': str(message.author.id),
+                    'guild_id': str(message.guild.id) if message.guild else None,
+                    'channel_id': str(message.channel.id) if message.guild else None,
+                    'message_content': message.content
                 }
             )
-            try:
-                await message.channel.send(
-                    embed=self.ui_components.create_error_embed(
-                        error=e,
-                        error_id=error_id,
-                        context={"command": "message_reply"}
-                    )
-                )
-            except discord.Forbidden:
-                print(f"Could not send error message: {e} (Error ID: {error_id})")
 
     async def on_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         """Handle application command errors."""
@@ -394,10 +427,38 @@ class ChatGPTBot(commands.Bot):
             )
             return True  # Allow command to proceed if rate limiting fails
 
+    async def close(self):
+        """Called when the bot is shutting down."""
+        try:
+            # Stop conversation cleanup task
+            await self.conversation_manager.stop_cleanup_task()
+            
+            # Close the bot
+            await super().close()
+            
+        except Exception as e:
+            self.logger.error(f"Error during bot shutdown: {e}")
+            await super().close()
+
 def main():
     """Run the bot."""
-    bot = ChatGPTBot()
-    bot.run(os.getenv('DISCORD_BOT_TOKEN'))
+    try:
+        # Set up logging
+        logger = setup_logging()
+        logger.info("Starting bot...")
+        
+        # Load environment variables
+        load_dotenv()
+        
+        # Initialize bot
+        bot = ChatGPTBot()
+        
+        # Run the bot
+        bot.run(os.getenv('DISCORD_BOT_TOKEN'))
+        
+    except Exception as e:
+        print(f"Error starting bot: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main() 
