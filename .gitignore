@@ -48,4 +48,14 @@ Thumbs.db
 
 # Jupyter Notebook
 .ipynb_checkpoints
-*.ipynb 
+*.ipynb
+
+# New additions from the code block
+logs/
+*.log
+settings/user_settings.json
+settings/user_history/
+settings/servers/
+settings/personas/
+settings/summaries/
+backups/ 

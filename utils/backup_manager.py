@@ -34,7 +34,7 @@ class BackupManager:
             # Backup settings directory
             settings_backup = os.path.join(temp_dir, "settings")
             shutil.copytree(self.settings_dir, settings_backup, 
-                          ignore=shutil.ignore_patterns('backups', 'temp_backup'))
+                          ignore=shutil.ignore_patterns('backups', 'temp_backup', '.env'))
             
             # Create backup manifest
             manifest = {
