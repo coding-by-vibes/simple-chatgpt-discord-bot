@@ -47,6 +47,32 @@ settings/personas/*
 !settings/personas/.gitkeep
 settings/summaries/*
 !settings/summaries/.gitkeep
+settings/guild_data/*
+!settings/guild_data/.gitkeep
+settings/analytics/*
+!settings/analytics/.gitkeep
+settings/user_stats/*
+!settings/user_stats/.gitkeep
+settings/rate_limits/*
+!settings/rate_limits/.gitkeep
+settings/rbac/*
+!settings/rbac/.gitkeep
+settings/cache/*
+!settings/cache/.gitkeep
+settings/conversations/*
+!settings/conversations/.gitkeep
+settings/topics/*
+!settings/topics/.gitkeep
+settings/corrections/*
+!settings/corrections/.gitkeep
+settings/error_logs/*
+!settings/error_logs/.gitkeep
+settings/persona_recommendations/*
+!settings/persona_recommendations/.gitkeep
+settings/recovery_data/*
+!settings/recovery_data/.gitkeep
+settings/feedback/*
+!settings/feedback/.gitkeep
 backups/
 
 # OS specific

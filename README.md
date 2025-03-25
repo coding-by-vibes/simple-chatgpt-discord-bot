@@ -77,20 +77,29 @@ YOUTUBE_API_KEY=your_youtube_api_key
 ```
 
 ## Project Structure
-
-The bot uses a structured settings system:
-
-- `settings/` - Main settings directory
-  - `conversation_analyzer.py` - Handles conversation analysis
-  - `conversation_manager.py` - Manages conversation flow
-  - `default_settings.json` - Default configuration template
-  - `settings_manager.py` - Manages settings operations
-  - `user_manager.py` - Handles user-specific settings
-  - `user_settings.json` - User-specific settings (generated on first run)
-  - `user_history/` - Stores user conversation history
-  - `servers/` - Stores server-specific settings
-  - `personas/` - Stores custom AI personas
-  - `summaries/` - Stores content summaries
+```
+├── settings/
+│   ├── user_history/     # User conversation history
+│   ├── servers/          # Server-specific settings
+│   ├── personas/         # Custom AI personas
+│   ├── summaries/        # Content summaries
+│   ├── guild_data/       # Guild-specific data
+│   ├── analytics/        # Usage analytics
+│   ├── user_stats/       # User statistics
+│   ├── rate_limits/      # Rate limiting data
+│   ├── rbac/            # Role-based access control
+│   ├── cache/           # Cached data
+│   ├── conversations/    # Active conversations
+│   ├── topics/          # Topic tracking
+│   ├── corrections/     # Error corrections
+│   ├── error_logs/      # Error logging
+│   ├── persona_recommendations/  # AI persona suggestions
+│   ├── recovery_data/   # Data recovery backups
+│   └── feedback/        # User feedback
+├── utils/               # Utility functions
+├── cogs/               # Discord bot cogs
+└── main.py             # Main bot file
+```
 
 ## Usage
 
