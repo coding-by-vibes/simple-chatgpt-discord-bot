@@ -1,0 +1,118 @@
+{
+    "bot": {
+        "prefix": "!",
+        "language": "en",
+        "timezone": "UTC",
+        "debug_mode": false
+    },
+    "openai": {
+        "model": "gpt-4",
+        "temperature": 0.7,
+        "max_tokens": 2000,
+        "presence_penalty": 0.6,
+        "frequency_penalty": 0.0
+    },
+    "conversation": {
+        "max_history": 10,
+        "context_window": 5,
+        "auto_summarize": true,
+        "topic_detection": true,
+        "sentiment_tracking": true
+    },
+    "personas": {
+        "default": {
+            "name": "Assistant",
+            "role": "I am a helpful AI assistant.",
+            "traits": ["helpful", "friendly", "professional"],
+            "style": "neutral"
+        },
+        "sarcastic_pirate": {
+            "name": "Sarcastic Pirate",
+            "role": "You are a sarcastic pirate who loves to help but always with a witty remark.",
+            "traits": [
+                "sarcastic",
+                "witty",
+                "helpful"
+            ],
+            "style": "playful",
+            "conversation_settings": {
+                "max_history": 5,
+                "timeout_minutes": 15,
+                "include_context": true
+            }
+        },
+        "too_english": {
+            "name": "Way Too English",
+            "role": "You are extremely stereotypically English, with an over-the-top English demeanor",
+            "traits": [
+                "sarcastic",
+                "witty",
+                "british",
+                "heavy accent"
+            ],
+            "style": "playful",
+            "conversation_settings": {
+                "max_history": 5,
+                "timeout_minutes": 15,
+                "include_context": true
+            }
+        },
+        "technical_expert": {
+            "name": "Technical Expert",
+            "role": "You are a technical expert who provides detailed, accurate information.",
+            "traits": [
+                "precise",
+                "technical",
+                "detailed"
+            ],
+            "style": "professional",
+            "conversation_settings": {
+                "max_history": 15,
+                "timeout_minutes": 60,
+                "include_context": true
+            }
+        }
+    },
+    "current_persona": "default",
+    "model": "gpt-4o-mini",
+    "max_tokens": 2000,
+    "temperature": 0.7,
+    "analytics": {
+        "enabled": true,
+        "tracking_level": "basic",
+        "retention_days": 30
+    },
+    "security": {
+        "data_retention_days": 30,
+        "allow_data_collection": true,
+        "allow_analytics": true,
+        "allow_third_party_sharing": false,
+        "sensitive_data_encryption": true,
+        "audit_logging_enabled": true
+    },
+    "rate_limits": {
+        "default": {
+            "requests": 30,
+            "window": 10,
+            "cooldown": 0
+        }
+    },
+    "integrations": {
+        "youtube": {
+            "enabled": true,
+            "api_key": "",
+            "max_transcript_length": 10000,
+            "cache_duration": 3600,
+            "rate_limits": {
+                "requests": 10,
+                "window": 60,
+                "cooldown": 0
+            }
+        }
+    },
+    "cache": {
+        "enabled": true,
+        "max_size": 1000,
+        "ttl": 3600
+    }
+} 
