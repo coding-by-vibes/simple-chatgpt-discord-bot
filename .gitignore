@@ -36,11 +36,18 @@ ENV/
 *.swo
 
 # Project specific
-settings/
+logs/
 *.log
-*.json
-!package.json
-!package-lock.json
+settings/user_settings.json
+settings/user_history/*
+!settings/user_history/.gitkeep
+settings/servers/*
+!settings/servers/.gitkeep
+settings/personas/*
+!settings/personas/.gitkeep
+settings/summaries/*
+!settings/summaries/.gitkeep
+backups/
 
 # OS specific
 .DS_Store
@@ -51,7 +58,6 @@ Thumbs.db
 *.ipynb
 
 # New additions from the code block
-logs/
 *.log
 settings/user_settings.json
 settings/user_history/
