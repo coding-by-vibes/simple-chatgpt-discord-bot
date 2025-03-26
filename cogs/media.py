@@ -7,6 +7,7 @@ from utils.youtube_manager import YouTubeManager
 from utils.article_summarizer import ArticleSummarizer
 from utils.ui_components import UIComponents
 import logging
+from utils.recipe_manager import RecipeManager
 
 class Media(commands.Cog):
     def __init__(self, bot):
@@ -16,6 +17,7 @@ class Media(commands.Cog):
         self.article_summarizer = bot.article_summarizer
         self.ui_components = bot.ui_components
         self.logger = logging.getLogger(__name__)
+        self.recipe_manager = bot.recipe_manager
 
     @app_commands.command(
         name="summarize",
@@ -49,6 +51,14 @@ class Media(commands.Cog):
         await interaction.response.defer()
 
         try:
+            # Check if video contains a recipe
+            if self.youtube_manager.is_recipe_video(url):
+                self.logger.info("Detected recipe video, extracting recipe...")
+                recipe = await self.youtube_manager.get_transcript(url)
+                if recipe:
+                    await interaction.followup.send(recipe)
+                    return
+
             # First, try to detect if it's a YouTube video
             video_id = self.youtube_manager.extract_video_id(url)
             
@@ -95,6 +105,13 @@ class Media(commands.Cog):
                     await interaction.followup.send(error_msg)
                     return
                     
+                # Check if transcript contains a recipe
+                if self.recipe_manager.is_recipe_content(transcript):
+                    recipe = self.recipe_manager.extract_recipe(transcript, url)
+                    if recipe:
+                        await interaction.followup.send(self.recipe_manager.format_recipe_card(recipe))
+                        return
+
                 # Create embed for video information
                 embed = discord.Embed(
                     title=f"📺 {video_details['title']}",
@@ -120,7 +137,7 @@ class Media(commands.Cog):
             
             else:
                 # Handle article
-                summary_data = self.article_summarizer.summarize_article(url, summary_type=summary_type)
+                summary_data = await self.article_summarizer.summarize_article(url, summary_type=summary_type)
                 
                 if not summary_data:
                     await interaction.followup.send("❌ Could not summarize the content. Please check if the URL is valid and accessible.")
@@ -161,6 +178,138 @@ class Media(commands.Cog):
             )
             await interaction.followup.send(
                 f"❌ An error occurred while processing your request. Error ID: {error_id}"
+            )
+
+    @app_commands.command(name="recipe", description="Get recipe from a URL or text")
+    async def recipe(self, interaction: discord.Interaction, content: str):
+        """Extract recipe from URL or text."""
+        try:
+            await interaction.response.defer()
+
+            # Check if content is a URL
+            if content.startswith(('http://', 'https://')):
+                if 'youtube.com' in content or 'youtu.be' in content:
+                    # Handle YouTube video
+                    recipe = await self.youtube_manager.get_transcript(content)
+                    if recipe:
+                        await interaction.followup.send(recipe)
+                    else:
+                        await interaction.followup.send("Sorry, I couldn't find a recipe in this video.")
+                else:
+                    # Handle article URLs
+                    self.logger.info(f"Attempting to extract recipe from article URL: {content}")
+                    recipe = await self.recipe_manager.extract_recipe_from_article(content)
+                    if recipe:
+                        recipe_cards = self.recipe_manager.format_recipe_card(recipe)
+                        # Send first message as followup
+                        await interaction.followup.send(recipe_cards[0])
+                        # Send remaining messages in the channel
+                        for card in recipe_cards[1:]:
+                            await interaction.channel.send(card)
+                    else:
+                        await interaction.followup.send("Sorry, I couldn't find a recipe in this article.")
+            else:
+                # Handle text input
+                recipe = self.recipe_manager.extract_recipe(content)
+                if recipe:
+                    recipe_cards = self.recipe_manager.format_recipe_card(recipe)
+                    # Send first message as followup
+                    await interaction.followup.send(recipe_cards[0])
+                    # Send remaining messages in the channel
+                    for card in recipe_cards[1:]:
+                        await interaction.channel.send(card)
+                else:
+                    await interaction.followup.send("Sorry, I couldn't find a recipe in the provided text.")
+
+            # Track interaction with analytics
+            interaction_data = {
+                "command": "recipe",
+                "content_type": "url" if content.startswith(('http://', 'https://')) else "text",
+                "url": content if content.startswith(('http://', 'https://')) else None,
+                "guild_id": str(interaction.guild_id)
+            }
+            self.bot.user_analytics.track_interaction(str(interaction.user.id), interaction_data)
+
+        except Exception as e:
+            error_id = self.error_handler.log_error(
+                error=e,
+                context={
+                    "command": "recipe",
+                    "user_id": str(interaction.user.id),
+                    "guild_id": str(interaction.guild_id)
+                }
+            )
+            await interaction.followup.send(
+                f"❌ An error occurred while processing your request. Error ID: {error_id}"
+            )
+
+    @app_commands.command(
+        name="search_recipes",
+        description="Search for recipes online"
+    )
+    @app_commands.describe(
+        query="What recipe would you like to search for?",
+        max_results="Maximum number of results to show (1-10)"
+    )
+    async def search_recipes(
+        self,
+        interaction: discord.Interaction,
+        query: str,
+        max_results: int = 5
+    ):
+        """
+        Search for recipes online from trusted cooking websites.
+        
+        Parameters:
+        -----------
+        query: str
+            What recipe would you like to search for?
+        max_results: int
+            Maximum number of results to show (1-10)
+        """
+        await interaction.response.defer()
+
+        try:
+            # Validate max_results
+            max_results = max(1, min(10, max_results))
+            
+            # Search for recipes
+            results = await self.recipe_manager.search_recipes(query, max_results)
+            
+            # Format and send results
+            message = self.recipe_manager.format_search_results(results)
+            
+            # Split long messages if needed
+            if len(message) > 2000:
+                parts = [message[i:i+1900] for i in range(0, len(message), 1900)]
+                for i, part in enumerate(parts):
+                    if i == 0:
+                        await interaction.followup.send(part)
+                    else:
+                        await interaction.channel.send(part)
+            else:
+                await interaction.followup.send(message)
+
+            # Track interaction with analytics
+            interaction_data = {
+                "command": "search_recipes",
+                "query": query,
+                "max_results": max_results,
+                "guild_id": str(interaction.guild_id)
+            }
+            self.bot.user_analytics.track_interaction(str(interaction.user.id), interaction_data)
+
+        except Exception as e:
+            error_id = self.error_handler.log_error(
+                error=e,
+                context={
+                    "command": "search_recipes",
+                    "user_id": str(interaction.user.id),
+                    "guild_id": str(interaction.guild_id)
+                }
+            )
+            await interaction.followup.send(
+                f"❌ An error occurred while searching for recipes. Error ID: {error_id}"
             )
 
 async def setup(bot):

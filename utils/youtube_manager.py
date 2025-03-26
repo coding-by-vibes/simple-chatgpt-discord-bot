@@ -7,6 +7,7 @@ from googleapiclient.discovery import build
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api.formatters import TextFormatter
 import openai
+from .recipe_manager import RecipeManager
 
 class YouTubeManager:
     def __init__(self, api_key: str):
@@ -18,6 +19,8 @@ class YouTubeManager:
         self.api_key = api_key
         self.youtube = build('youtube', 'v3', developerKey=api_key)
         self.logger = logging.getLogger(__name__)
+        self.recipe_manager = RecipeManager()
+        self.formatter = TextFormatter()
         
         # Configure logger to handle Unicode
         for handler in self.logger.handlers:
@@ -81,65 +84,40 @@ class YouTubeManager:
             raise
     
     async def get_transcript(self, url: str, detailed: bool = False) -> Optional[str]:
-        """Get video transcript with timestamps."""
+        """Get transcript from YouTube video."""
         try:
             video_id = self.extract_video_id(url)
             if not video_id:
-                self.logger.error("Failed to extract video ID from URL")
                 return None
 
-            # Get available transcripts
+            # Get transcript list
+            transcript_list = YouTubeTranscriptApi.list_transcripts(self.youtube, video_id)
+            
+            # Try to get manual English transcript first
             try:
-                transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-            except Exception as e:
-                self.logger.error(f"Failed to list transcripts: {str(e)}")
-                return None
-            
-            # Try to get English transcript in order of preference
-            transcript = None
-            preferred_languages = ['en', 'en-US', 'en-GB']
-            
-            # Try manual English transcripts first
-            for lang in preferred_languages:
-                try:
-                    transcript = transcript_list.find_transcript([lang])
-                    self.logger.info(f"Found manual transcript in {lang}")
-                    break
-                except Exception:
-                    continue
-            
-            # If no manual English transcript, try auto-generated English
-            if not transcript:
+                transcript = transcript_list.find_manually_created_transcript(['en'])
+            except:
+                # If no manual transcript, try auto-generated English
                 try:
                     transcript = transcript_list.find_generated_transcript(['en'])
-                    self.logger.info("Found auto-generated English transcript")
-                except Exception as e:
-                    self.logger.error(f"Failed to get English transcript: {str(e)}")
+                except:
+                    self.logger.error(f"No English transcript found for video {video_id}")
                     return None
 
-            # Get the transcript data
-            try:
-                transcript_data = transcript.fetch()
-                self.logger.info(f"Successfully fetched transcript with {len(transcript_data)} entries")
-                
-                # Format transcript based on detail level
-                if detailed:
-                    # Include timestamps for detailed view
-                    formatted_transcript = []
-                    for entry in transcript_data:
-                        # Access attributes directly from the TranscriptEntry object
-                        timestamp = int(float(entry.start))
-                        minutes = timestamp // 60
-                        seconds = timestamp % 60
-                        formatted_transcript.append(f"[{minutes:02d}:{seconds:02d}] {entry.text}")
-                    return "\n".join(formatted_transcript)
-                else:
-                    # Simple concatenation for basic view
-                    return " ".join(entry.text for entry in transcript_data)
-                    
-            except Exception as e:
-                self.logger.error(f"Failed to fetch or format transcript data: {str(e)}")
-                return None
+            # Get transcript
+            transcript_data = transcript.fetch()
+            formatted_transcript = self.formatter.format_transcript(transcript_data)
+            
+            # Check if transcript contains a recipe
+            if self.recipe_manager.is_recipe_content(formatted_transcript):
+                recipe = self.recipe_manager.extract_recipe(formatted_transcript, url)
+                if recipe:
+                    recipe_cards = self.recipe_manager.format_recipe_card(recipe)
+                    # Join all cards with newlines since this method expects a single string
+                    return "\n\n".join(recipe_cards)
+            
+            # If no recipe found, return regular transcript
+            return formatted_transcript
 
         except Exception as e:
             self.logger.error(f"Error getting transcript: {str(e)}")
@@ -200,4 +178,29 @@ class YouTubeManager:
 
         except Exception as e:
             self.logger.error(f"Error creating summary: {str(e)}")
-            raise 
+            raise
+
+    def is_recipe_video(self, url: str) -> bool:
+        """Check if video likely contains a recipe based on title and description."""
+        try:
+            video_id = self.extract_video_id(url)
+            if not video_id:
+                return False
+
+            # Get video info
+            video_info = self.get_video_details(url)
+            if not video_info:
+                return False
+
+            # Check title for recipe indicators
+            title = video_info['title'].lower()
+            recipe_indicators = [
+                'recipe', 'cooking', 'baking', 'how to make', 'how to cook',
+                'tutorial', 'guide', 'step by step', 'ingredients', 'instructions'
+            ]
+            
+            return any(indicator in title for indicator in recipe_indicators)
+
+        except Exception as e:
+            self.logger.error(f"Error checking if recipe video: {str(e)}")
+            return False 

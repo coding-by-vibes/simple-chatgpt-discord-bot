@@ -1,5 +1,7 @@
 # Environment variables
 .env
+.env.*
+!.env.example
 
 # Python
 __pycache__/
@@ -26,7 +28,6 @@ wheels/
 
 # Virtual Environment
 venv/
-env/
 ENV/
 
 # IDE
@@ -34,6 +35,18 @@ ENV/
 .vscode/
 *.swp
 *.swo
+
+# Logs
+*.log
+
+# Local settings
+settings/users/*.json
+settings/users/*.txt
+settings/users/*.csv
+settings/users/*.db
+
+# Test files
+test_*.py
 
 # Project specific
 logs/
