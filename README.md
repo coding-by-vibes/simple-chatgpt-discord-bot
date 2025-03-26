@@ -16,6 +16,11 @@ This project was made through vibe coding as a test to see if it's possible to m
   - Adjust summary length and detail level
   - Focus on specific aspects of content
   - Multiple summary formats
+- 🍳 Recipe Extraction
+  - Extract recipes from various cooking websites
+  - Format recipes in a clean, readable markdown format
+  - Support for multiple recipe sources (AllRecipes, Food Network, NYT Cooking, etc.)
+  - Automatic message splitting for long recipes
 - 🤖 Interactive ChatGPT Conversations
   - Natural language interactions
   - Custom bot profiles, including tone and focus
@@ -27,7 +32,6 @@ This project was made through vibe coding as a test to see if it's possible to m
   - Collaborative learning environment
   - Easy content sharing and discussion
 
-
 ## Main Commands
 
 - `/ask` - Ask ChatGPT any question and get a detailed response
@@ -35,6 +39,7 @@ This project was made through vibe coding as a test to see if it's possible to m
 - `/wiki` - Get Wikipedia-based answers to your questions
 - `/bespoke` - Create and use a personalized AI assistant persona
 - `/persona` - Switch between different AI personas for different conversation styles
+- `/recipe` - Extract and format recipes from cooking websites
 
 ## Additional Commands
 
@@ -49,6 +54,7 @@ This project was made through vibe coding as a test to see if it's possible to m
 - Discord Bot Token
 - OpenAI API Key
 - YouTube API Key (for video summarization)
+- Google API Key and Search Engine ID (for recipe search)
 
 ## Installation
 
@@ -69,11 +75,18 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-4. Create a `.env` file in the root directory with your API keys:
+4. Copy `.env.example` to `.env` and fill in your API keys:
+```bash
+cp .env.example .env
+```
+
+5. Edit the `.env` file with your API keys:
 ```env
 DISCORD_TOKEN=your_discord_token
 OPENAI_API_KEY=your_openai_api_key
 YOUTUBE_API_KEY=your_youtube_api_key
+GOOGLE_API_KEY=your_google_api_key
+GOOGLE_SEARCH_ENGINE_ID=your_search_engine_id
 ```
 
 ## Project Structure
@@ -97,7 +110,11 @@ YOUTUBE_API_KEY=your_youtube_api_key
 │   ├── recovery_data/   # Data recovery backups
 │   └── feedback/        # User feedback
 ├── utils/               # Utility functions
+│   ├── recipe_manager.py  # Recipe extraction and formatting
+│   └── ...
 ├── cogs/               # Discord bot cogs
+│   ├── media.py        # Media handling (including recipes)
+│   └── ...
 └── main.py             # Main bot file
 ```
 
@@ -113,6 +130,18 @@ python bot.py
    - Generate necessary settings files and folders
    - Create `user_settings.json` on first run
    - Be ready to use
+
+## Recipe Functionality
+
+The bot can extract recipes from various cooking websites and format them in a clean, readable markdown format. Supported features include:
+
+- Automatic extraction of ingredients, instructions, and cooking times
+- Support for multiple recipe sources
+- Smart message splitting for long recipes
+- Clean markdown formatting for easy reading
+- Fallback mechanisms for different website structures
+
+To use the recipe feature, simply use the `/recipe` command followed by a recipe URL from a supported website.
 
 ## Contributing
 
@@ -130,4 +159,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - OpenAI for the ChatGPT API
 - Discord.py for the Discord API wrapper
-- YouTube Data API for video information 
+- YouTube Data API for video information
+- Recipe-scrapers library for recipe extraction 
